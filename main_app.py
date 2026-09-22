@@ -22,8 +22,8 @@ st.set_page_config(
 st.title("PragyanAI - PDF Merger")
 
 st.write(
-    "Upload multiple PDF files, view them individually, "
-    "check their order, merge them, and download the result."
+    "Upload multiple PDF files, arrange their order, "
+    "view them, merge them, and download the final PDF."
 )
 
 st.info(
@@ -35,15 +35,15 @@ st.info(
 # SESSION STATE
 # ============================================================
 
+if "pdf_files" not in st.session_state:
+    st.session_state.pdf_files = []
+
 if "merged_pdf" not in st.session_state:
     st.session_state.merged_pdf = None
 
-if "merged_filename" not in st.session_state:
-    st.session_state.merged_filename = "merged_pdf.pdf"
-
 
 # ============================================================
-# FUNCTION — PDF VIEWER
+# FUNCTION — DISPLAY PDF
 # ============================================================
 
 def display_pdf(pdf_file):
@@ -70,10 +70,10 @@ def display_pdf(pdf_file):
 
 
 # ============================================================
-# SECTION 1 — UPLOAD PDF FILES
+# SECTION 1 — UPLOAD PDF
 # ============================================================
 
-st.header("1. Upload PDF Files")
+st.header("1. Upload PDF")
 
 uploaded_files = st.file_uploader(
     "Select PDF Files",
@@ -83,171 +83,229 @@ uploaded_files = st.file_uploader(
 
 
 # ============================================================
-# SECTION 2 — PDF ORDER
+# STORE UPLOADED FILES
 # ============================================================
 
 if uploaded_files:
 
-    st.divider()
+    # Store uploaded files only when first uploaded
+    if not st.session_state.pdf_files:
 
-    st.header("2. PDF Upload Order")
+        st.session_state.pdf_files = uploaded_files
 
-    st.write(
-        "The PDFs below are arranged according to "
-        "the order in which they appear in the uploaded file list."
-    )
+    else:
 
-    for index, uploaded_file in enumerate(
-        uploaded_files,
-        start=1
-    ):
+        # Check whether new files were uploaded
+        old_names = [
+            file.name
+            for file in st.session_state.pdf_files
+        ]
 
-        file_size = uploaded_file.size / 1024
+        new_names = [
+            file.name
+            for file in uploaded_files
+        ]
 
-        st.write(
-            f"### {index}. {uploaded_file.name}"
-        )
+        if old_names != new_names:
 
-        st.caption(
-            f"PDF {index} | "
-            f"File Size: {file_size:.2f} KB"
-        )
+            st.session_state.pdf_files = uploaded_files
+
+            # Reset merged PDF
+            st.session_state.merged_pdf = None
 
 
 # ============================================================
-# SECTION 3 — VIEW PDFs ONE BY ONE
+# SECTION 2 — ARRANGE FILE ORDER
 # ============================================================
 
-if uploaded_files:
+if st.session_state.pdf_files:
 
     st.divider()
 
-    st.header("3. View PDF Files One by One")
+    st.header("2. Arrange File Order")
 
     st.write(
-        "Select a PDF below to view its contents."
+        "Use the ⬆️ and ⬇️ buttons to arrange the PDF files "
+        "before merging."
     )
 
-    # Create names for dropdown
+    files = st.session_state.pdf_files
+
+    for index in range(len(files)):
+
+        file = files[index]
+
+        col1, col2, col3, col4 = st.columns(
+            [1, 5, 1, 1]
+        )
+
+        with col1:
+
+            st.write(
+                f"**{index + 1}**"
+            )
+
+        with col2:
+
+            st.write(
+                f"📄 **{file.name}**"
+            )
+
+        with col3:
+
+            # Move UP
+            if st.button(
+                "⬆️",
+                key=f"up_{index}",
+                disabled=(index == 0)
+            ):
+
+                files[index], files[index - 1] = (
+                    files[index - 1],
+                    files[index]
+                )
+
+                st.session_state.pdf_files = files
+
+                st.rerun()
+
+        with col4:
+
+            # Move DOWN
+            if st.button(
+                "⬇️",
+                key=f"down_{index}",
+                disabled=(index == len(files) - 1)
+            ):
+
+                files[index], files[index + 1] = (
+                    files[index + 1],
+                    files[index]
+                )
+
+                st.session_state.pdf_files = files
+
+                st.rerun()
+
+
+# ============================================================
+# SECTION 3 — VIEW UPLOADED FILES
+# ============================================================
+
+if st.session_state.pdf_files:
+
+    st.divider()
+
+    st.header("3. View Uploaded Files")
+
+    st.write(
+        "Select a PDF file to view it."
+    )
+
+    files = st.session_state.pdf_files
+
     pdf_options = []
 
-    for index, uploaded_file in enumerate(
-        uploaded_files,
+    for index, file in enumerate(
+        files,
         start=1
     ):
 
         pdf_options.append(
-            f"PDF {index} - {uploaded_file.name}"
+            f"PDF {index} - {file.name}"
         )
 
     selected_pdf = st.selectbox(
-        "Select PDF to View",
+        "Select PDF",
         pdf_options
     )
 
-    # Find selected PDF
     selected_index = pdf_options.index(
         selected_pdf
     )
 
-    selected_file = uploaded_files[
-        selected_index
-    ]
+    selected_file = files[selected_index]
 
     st.subheader(
-        f"Viewing PDF {selected_index + 1}: "
+        f"PDF {selected_index + 1}: "
         f"{selected_file.name}"
     )
 
-    # Display PDF
     display_pdf(selected_file)
 
 
 # ============================================================
-# SECTION 4 — MERGE PDF FILES
+# SECTION 4 — MERGE PDF
 # ============================================================
 
-if uploaded_files:
+if st.session_state.pdf_files:
 
     st.divider()
 
-    st.header("4. Merge PDF Files")
+    st.header("4. Merge PDF")
 
     st.write(
-        "The PDFs will be merged in the following order:"
+        "The PDFs will be merged according to the order "
+        "you arranged above."
     )
 
-    for index, uploaded_file in enumerate(
-        uploaded_files,
+    # Show final order
+    for index, file in enumerate(
+        st.session_state.pdf_files,
         start=1
     ):
 
         st.write(
-            f"**{index}.** {uploaded_file.name}"
+            f"**{index}.** {file.name}"
         )
 
-    st.write("")
+    if len(st.session_state.pdf_files) < 2:
 
-    if st.button(
-        "🔗 Merge PDF Files",
-        type="primary",
-        use_container_width=True
-    ):
+        st.warning(
+            "⚠️ Please upload at least 2 PDF files to merge."
+        )
 
-        if len(uploaded_files) < 2:
+    else:
 
-            st.warning(
-                "⚠️ Please upload at least 2 PDF files."
-            )
-
-        else:
+        if st.button(
+            "🔗 Merge PDF Files",
+            type="primary",
+            use_container_width=True
+        ):
 
             try:
 
                 # Create PDF writer
-                pdf_writer = PdfWriter()
+                writer = PdfWriter()
 
-                # Add PDFs in upload order
-                for uploaded_file in uploaded_files:
+                # Add PDFs according to arranged order
+                for file in st.session_state.pdf_files:
 
-                    uploaded_file.seek(0)
+                    file.seek(0)
 
-                    pdf_reader = PdfReader(
-                        uploaded_file
-                    )
+                    reader = PdfReader(file)
 
-                    # Add every page
-                    for page in pdf_reader.pages:
+                    for page in reader.pages:
 
-                        pdf_writer.add_page(page)
+                        writer.add_page(page)
 
-                # Create memory buffer
-                output_buffer = io.BytesIO()
+                # Create output buffer
+                output = io.BytesIO()
 
-                # Write merged PDF
-                pdf_writer.write(
-                    output_buffer
-                )
+                writer.write(output)
 
-                pdf_writer.close()
+                writer.close()
 
                 # Store merged PDF
                 st.session_state.merged_pdf = (
-                    output_buffer.getvalue()
-                )
-
-                st.session_state.merged_filename = (
-                    "merged_pdf.pdf"
+                    output.getvalue()
                 )
 
                 st.success(
-                    f"✅ Successfully merged "
-                    f"{len(uploaded_files)} PDF files!"
+                    "✅ PDF files merged successfully!"
                 )
 
             except Exception as e:
-
-                st.session_state.merged_pdf = None
 
                 st.error(
                     f"❌ Error while merging PDFs: {e}"
@@ -255,49 +313,25 @@ if uploaded_files:
 
 
 # ============================================================
-# SECTION 5 — MERGED PDF STATUS
+# SECTION 5 — MERGED PDF
 # ============================================================
 
 if st.session_state.merged_pdf:
 
     st.divider()
 
-    st.header("5. Merged PDF Status")
+    st.header("5. Merged PDF")
 
     st.success(
-        "✅ PDF files have been merged successfully."
+        "✅ Your merged PDF is ready!"
     )
 
-    merged_size = (
-        len(st.session_state.merged_pdf) / 1024
-    )
+    # --------------------------------------------------------
+    # VIEW MERGED PDF
+    # --------------------------------------------------------
 
-    st.write(
-        f"**Output File:** "
-        f"{st.session_state.merged_filename}"
-    )
+    st.subheader("View Merged PDF")
 
-    st.write(
-        f"**Merged File Size:** "
-        f"{merged_size:.2f} KB"
-    )
-
-    st.write(
-        "The merged PDF is ready to view and download."
-    )
-
-
-# ============================================================
-# SECTION 6 — VIEW MERGED PDF
-# ============================================================
-
-if st.session_state.merged_pdf:
-
-    st.divider()
-
-    st.header("6. View Merged PDF")
-
-    # Convert merged bytes to base64
     merged_base64 = base64.b64encode(
         st.session_state.merged_pdf
     ).decode("utf-8")
@@ -316,21 +350,14 @@ if st.session_state.merged_pdf:
         unsafe_allow_html=True
     )
 
-
-# ============================================================
-# SECTION 7 — DOWNLOAD MERGED PDF
-# ============================================================
-
-if st.session_state.merged_pdf:
-
-    st.divider()
-
-    st.header("7. Download Merged PDF")
+    # --------------------------------------------------------
+    # DOWNLOAD MERGED PDF
+    # --------------------------------------------------------
 
     st.download_button(
         label="⬇️ Download Merged PDF",
         data=st.session_state.merged_pdf,
-        file_name=st.session_state.merged_filename,
+        file_name="merged_pdf.pdf",
         mime="application/pdf",
         use_container_width=True
     )
