@@ -1,7 +1,7 @@
 import io
-import base64
 import streamlit as st
 from pypdf import PdfReader, PdfWriter
+import fitz
 
 
 # ============================================================
@@ -27,7 +27,7 @@ st.write(
 )
 
 st.info(
-    "Built with Python + Streamlit + PyPDF"
+    "Built with Python + Streamlit + PyPDF + PyMuPDF"
 )
 
 
@@ -43,30 +43,60 @@ if "merged_pdf" not in st.session_state:
 
 
 # ============================================================
-# FUNCTION — DISPLAY PDF
+# FUNCTION — VIEW PDF AS IMAGES
 # ============================================================
 
 def display_pdf(pdf_file):
 
-    pdf_bytes = pdf_file.getvalue()
+    try:
 
-    base64_pdf = base64.b64encode(
-        pdf_bytes
-    ).decode("utf-8")
+        # Read PDF bytes
+        pdf_bytes = pdf_file.getvalue()
 
-    pdf_display = f"""
-    <iframe
-        src="data:application/pdf;base64,{base64_pdf}"
-        width="100%"
-        height="500"
-        type="application/pdf">
-    </iframe>
-    """
+        # Open PDF using PyMuPDF
+        document = fitz.open(
+            stream=pdf_bytes,
+            filetype="pdf"
+        )
 
-    st.markdown(
-        pdf_display,
-        unsafe_allow_html=True
-    )
+        # Number of pages
+        page_count = len(document)
+
+        st.caption(
+            f"Total Pages: {page_count}"
+        )
+
+        # Display every page
+        for page_number in range(page_count):
+
+            page = document.load_page(
+                page_number
+            )
+
+            # Render page as image
+            pix = page.get_pixmap(
+                matrix=fitz.Matrix(1.5, 1.5),
+                alpha=False
+            )
+
+            # Convert to PNG bytes
+            image_bytes = pix.tobytes(
+                "png"
+            )
+
+            st.image(
+                image_bytes,
+                caption=f"Page {page_number + 1}",
+                use_container_width=True
+            )
+
+        document.close()
+
+    except Exception as e:
+
+        st.error(
+            f"❌ Error displaying PDF: {e}"
+        )
 
 
 # ============================================================
@@ -88,30 +118,22 @@ uploaded_files = st.file_uploader(
 
 if uploaded_files:
 
-    # Store uploaded files only when first uploaded
-    if not st.session_state.pdf_files:
+    new_file_names = [
+        file.name
+        for file in uploaded_files
+    ]
+
+    old_file_names = [
+        file.name
+        for file in st.session_state.pdf_files
+    ]
+
+    if new_file_names != old_file_names:
 
         st.session_state.pdf_files = uploaded_files
 
-    else:
-
-        # Check whether new files were uploaded
-        old_names = [
-            file.name
-            for file in st.session_state.pdf_files
-        ]
-
-        new_names = [
-            file.name
-            for file in uploaded_files
-        ]
-
-        if old_names != new_names:
-
-            st.session_state.pdf_files = uploaded_files
-
-            # Reset merged PDF
-            st.session_state.merged_pdf = None
+        # Clear previous merged PDF
+        st.session_state.merged_pdf = None
 
 
 # ============================================================
@@ -125,8 +147,8 @@ if st.session_state.pdf_files:
     st.header("2. Arrange File Order")
 
     st.write(
-        "Use the ⬆️ and ⬇️ buttons to arrange the PDF files "
-        "before merging."
+        "Use the ⬆️ and ⬇️ buttons to arrange the "
+        "PDF files before merging."
     )
 
     files = st.session_state.pdf_files
@@ -153,7 +175,6 @@ if st.session_state.pdf_files:
 
         with col3:
 
-            # Move UP
             if st.button(
                 "⬆️",
                 key=f"up_{index}",
@@ -167,11 +188,13 @@ if st.session_state.pdf_files:
 
                 st.session_state.pdf_files = files
 
+                # Clear old merged PDF
+                st.session_state.merged_pdf = None
+
                 st.rerun()
 
         with col4:
 
-            # Move DOWN
             if st.button(
                 "⬇️",
                 key=f"down_{index}",
@@ -184,6 +207,9 @@ if st.session_state.pdf_files:
                 )
 
                 st.session_state.pdf_files = files
+
+                # Clear old merged PDF
+                st.session_state.merged_pdf = None
 
                 st.rerun()
 
@@ -199,7 +225,7 @@ if st.session_state.pdf_files:
     st.header("3. View Uploaded Files")
 
     st.write(
-        "Select a PDF file to view it."
+        "Select a PDF file to view its pages."
     )
 
     files = st.session_state.pdf_files
@@ -224,14 +250,19 @@ if st.session_state.pdf_files:
         selected_pdf
     )
 
-    selected_file = files[selected_index]
+    selected_file = files[
+        selected_index
+    ]
 
     st.subheader(
         f"PDF {selected_index + 1}: "
         f"{selected_file.name}"
     )
 
-    display_pdf(selected_file)
+    # Display PDF pages
+    display_pdf(
+        selected_file
+    )
 
 
 # ============================================================
@@ -245,8 +276,8 @@ if st.session_state.pdf_files:
     st.header("4. Merge PDF")
 
     st.write(
-        "The PDFs will be merged according to the order "
-        "you arranged above."
+        "The PDFs will be merged according to "
+        "the order you arranged above."
     )
 
     # Show final order
@@ -259,10 +290,12 @@ if st.session_state.pdf_files:
             f"**{index}.** {file.name}"
         )
 
+    st.write("")
+
     if len(st.session_state.pdf_files) < 2:
 
         st.warning(
-            "⚠️ Please upload at least 2 PDF files to merge."
+            "⚠️ Please upload at least 2 PDF files."
         )
 
     else:
@@ -278,21 +311,27 @@ if st.session_state.pdf_files:
                 # Create PDF writer
                 writer = PdfWriter()
 
-                # Add PDFs according to arranged order
+                # Add files in arranged order
                 for file in st.session_state.pdf_files:
 
                     file.seek(0)
 
-                    reader = PdfReader(file)
+                    reader = PdfReader(
+                        file
+                    )
 
                     for page in reader.pages:
 
-                        writer.add_page(page)
+                        writer.add_page(
+                            page
+                        )
 
                 # Create output buffer
                 output = io.BytesIO()
 
-                writer.write(output)
+                writer.write(
+                    output
+                )
 
                 writer.close()
 
@@ -327,32 +366,66 @@ if st.session_state.merged_pdf:
     )
 
     # --------------------------------------------------------
-    # VIEW MERGED PDF
+    # MERGED PDF VIEWER
     # --------------------------------------------------------
 
-    st.subheader("View Merged PDF")
-
-    merged_base64 = base64.b64encode(
-        st.session_state.merged_pdf
-    ).decode("utf-8")
-
-    merged_pdf_display = f"""
-    <iframe
-        src="data:application/pdf;base64,{merged_base64}"
-        width="100%"
-        height="600"
-        type="application/pdf">
-    </iframe>
-    """
-
-    st.markdown(
-        merged_pdf_display,
-        unsafe_allow_html=True
+    st.subheader(
+        "View Merged PDF"
     )
 
+    try:
+
+        # Open merged PDF
+        merged_document = fitz.open(
+            stream=st.session_state.merged_pdf,
+            filetype="pdf"
+        )
+
+        st.caption(
+            f"Total Pages: "
+            f"{len(merged_document)}"
+        )
+
+        # Display pages
+        for page_number in range(
+            len(merged_document)
+        ):
+
+            page = merged_document.load_page(
+                page_number
+            )
+
+            pix = page.get_pixmap(
+                matrix=fitz.Matrix(1.5, 1.5),
+                alpha=False
+            )
+
+            image_bytes = pix.tobytes(
+                "png"
+            )
+
+            st.image(
+                image_bytes,
+                caption=f"Page {page_number + 1}",
+                use_container_width=True
+            )
+
+        merged_document.close()
+
+    except Exception as e:
+
+        st.error(
+            f"❌ Error displaying merged PDF: {e}"
+        )
+
+
     # --------------------------------------------------------
-    # DOWNLOAD MERGED PDF
+    # DOWNLOAD
     # --------------------------------------------------------
+
+    st.subheader(
+        "Download Merged PDF"
+    )
 
     st.download_button(
         label="⬇️ Download Merged PDF",
@@ -370,5 +443,5 @@ if st.session_state.merged_pdf:
 st.divider()
 
 st.caption(
-    "PragyanAI | Python + Streamlit + PyPDF"
+    "PragyanAI | Python + Streamlit + PyPDF + PyMuPDF"
 )
